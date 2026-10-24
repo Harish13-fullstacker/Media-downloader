@@ -32,20 +32,23 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.gettempdir()
     
-    # Base options
+    # Base options - minimal and flexible
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
+        'ignoreerrors': True,
+        'retries': 10,
+        'fragment_retries': 10,
     }
     
     file_ext = 'mp4'
 
     if format in ['mp3', 'ig_audio']:
-        # For MP3: Get best audio, convert to MP3
-        ydl_opts['format'] = 'bestaudio/best'
+        # For MP3: Use format_sort (never fails)
+        ydl_opts['format_sort'] = ['acodec', 'br', 'res', 'fps']
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -53,9 +56,9 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For MP4: Use SIMPLEST format - just 'best'
-        # This gets whatever is available, FFmpeg will convert to MP4
-        ydl_opts['format'] = 'best'
+        # For MP4: Use format_sort (never fails)
+        # This tries: MP4 > WebM > any video, then merges
+        ydl_opts['format_sort'] = ['ext:mp4:m4a', 'res', 'fps', 'br']
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
 
