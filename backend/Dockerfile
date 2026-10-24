@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y ffmpeg curl && rm -rf /var/lib/apt/list
 
 WORKDIR /app
 
-# Install latest yt-dlp (critical!)
+# Install LATEST yt-dlp (critical for fixing format issues)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade yt-dlp
 RUN pip install --no-cache-dir -r requirements.txt
