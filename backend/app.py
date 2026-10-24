@@ -32,19 +32,21 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.gettempdir()
     
-    # Base options with cookies
+    # Base options
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
+        'nocheckcertificate': True,
+        'ignoreerrors': False,
     }
     
     file_ext = 'mp4'
 
-    # Flexible format selection
+    # FLEXIBLE format selection - tries multiple options
     if format in ['mp3', 'ig_audio']:
-        # For audio: get best audio and convert to MP3
+        # Audio: get best audio, convert to MP3
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -53,9 +55,10 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For video: try multiple format combinations
+        # Video: try MP4 first, then WebM, then ANY best video
         ydl_opts['format'] = (
             'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
+            'bestvideo[ext=mp4]+bestaudio/best/'
             'bestvideo[ext=webm]+bestaudio[ext=webm]/'
             'bestvideo+bestaudio/best'
         )
