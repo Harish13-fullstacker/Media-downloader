@@ -1,11 +1,11 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Install FFmpeg and curl
 RUN apt-get update && apt-get install -y ffmpeg curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install latest yt-dlp (critical - old versions have format bugs)
+# Install latest yt-dlp (critical!)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade yt-dlp
 RUN pip install --no-cache-dir -r requirements.txt
