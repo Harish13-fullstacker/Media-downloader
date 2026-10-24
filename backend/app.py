@@ -43,9 +43,8 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     
     file_ext = 'mp4'
 
-    # SMART format selection - let yt-dlp pick the best available
     if format in ['mp3', 'ig_audio']:
-        # For audio: just get best audio, convert to MP3
+        # For MP3: Get best audio, convert to MP3
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -54,9 +53,9 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For video: use SMART selection
-        # This tries multiple formats and picks whatever is available
-        ydl_opts['format'] = 'bestvideo*+bestaudio/best'
+        # For MP4: Use SIMPLEST format - just 'best'
+        # This gets whatever is available, FFmpeg will convert to MP4
+        ydl_opts['format'] = 'best'
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
 
