@@ -50,7 +50,7 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # Try MP4 first, then fall back to any video format
+        # Try MP4 first, then fall back to any available video
         ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
