@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 const YOUTUBE_API_KEY = 'AIzaSyCdDGCAF05RyJ8C9QY4kzZSej3xgWzVIs4'
 
 // Your Python backend URL
-const API_URL = 'http://localhost:8000'
+const API_URL =import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const TAGS = ['Tamil Hits', 'Anirudh Musical', 'A.R. Rahman', 'Lo-Fi Chill', 'EDM Party']
 
