@@ -32,21 +32,16 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.gettempdir()
     
-    # Base options
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
-        'nocheckcertificate': True,
-        'ignoreerrors': False,
     }
-    
     file_ext = 'mp4'
 
-    # FLEXIBLE format selection - tries multiple options
+    # More flexible format selection
     if format in ['mp3', 'ig_audio']:
-        # Audio: get best audio, convert to MP3
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -55,13 +50,8 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # Video: try MP4 first, then WebM, then ANY best video
-        ydl_opts['format'] = (
-            'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[ext=mp4]+bestaudio/best/'
-            'bestvideo[ext=webm]+bestaudio[ext=webm]/'
-            'bestvideo+bestaudio/best'
-        )
+        # Try MP4 first, then fall back to any video format
+        ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
 
@@ -82,10 +72,7 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
             filename=f"download.{file_ext}"
         )
     except Exception as e:
-        error_msg = str(e)
-        if 'Requested format is not available' in error_msg:
-            error_msg = 'This video format is not available. Try a different video or format.'
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def root():
