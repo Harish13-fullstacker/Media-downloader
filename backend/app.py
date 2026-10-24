@@ -32,31 +32,31 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.gettempdir()
     
+    # Base options
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
+        'nocheckcertificate': True,
     }
+    
     file_ext = 'mp4'
 
-    # More flexible format selection
+    # SMART format selection - let yt-dlp pick the best available
     if format in ['mp3', 'ig_audio']:
-        # For audio: get best audio and convert to MP3
+        # For audio: just get best audio, convert to MP3
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '192'
+            'preferredquality': '192',
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For video: try multiple format combinations
-        ydl_opts['format'] = (
-            'bestvideo[ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[ext=webm]+bestaudio[ext=webm]/'
-            'bestvideo+bestaudio/best'
-        )
+        # For video: use SMART selection
+        # This tries multiple formats and picks whatever is available
+        ydl_opts['format'] = 'bestvideo*+bestaudio/best'
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
 
@@ -79,7 +79,7 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     except Exception as e:
         error_msg = str(e)
         if 'Requested format is not available' in error_msg:
-            error_msg = 'This video format is not available. Try a different video or format.'
+            error_msg = 'This video format is not available. Try a different video.'
         raise HTTPException(status_code=500, detail=error_msg)
 
 @app.get("/")
