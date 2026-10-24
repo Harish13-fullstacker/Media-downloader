@@ -32,23 +32,27 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     task_id = str(uuid.uuid4())
     temp_dir = tempfile.gettempdir()
     
-    # Base options - minimal and flexible
+    print(f"Starting download for: {url}")
+    print(f"Format requested: {format}")
+    print(f"Temp directory: {temp_dir}")
+    
+    # Base options
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': False,  # Show logs for debugging
+        'no_warnings': False,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'ignoreerrors': True,
+        'ignoreerrors': False,
         'retries': 10,
         'fragment_retries': 10,
+        'extractor_retries': 5,
     }
     
     file_ext = 'mp4'
 
     if format in ['mp3', 'ig_audio']:
-        # For MP3: Use format_sort (never fails)
-        ydl_opts['format_sort'] = ['acodec', 'br', 'res', 'fps']
+        ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -56,9 +60,7 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For MP4: Use format_sort (never fails)
-        # This tries: MP4 > WebM > any video, then merges
-        ydl_opts['format_sort'] = ['ext:mp4:m4a', 'res', 'fps', 'br']
+        ydl_opts['format'] = 'best'
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
 
@@ -66,11 +68,19 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, run_ytdlp, url, ydl_opts)
         
-        files = [f for f in os.listdir(temp_dir) if f.startswith(task_id)]
+        # List files in temp directory for debugging
+        all_files = os.listdir(temp_dir)
+        print(f"All files in temp dir: {all_files}")
+        
+        files = [f for f in all_files if f.startswith(task_id)]
+        print(f"Files matching task_id: {files}")
+        
         if not files:
-            raise Exception("File not created by yt-dlp")
+            raise Exception(f"File not created by yt-dlp. Check Render logs for yt-dlp errors.")
         
         file_path = os.path.join(temp_dir, files[0])
+        print(f"File created: {file_path}")
+        
         background_tasks.add_task(delete_file, file_path)
         
         return FileResponse(
@@ -80,8 +90,7 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         )
     except Exception as e:
         error_msg = str(e)
-        if 'Requested format is not available' in error_msg:
-            error_msg = 'This video format is not available. Try a different video.'
+        print(f"Error: {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
 
 @app.get("/")
