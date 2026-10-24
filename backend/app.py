@@ -25,7 +25,12 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     temp_dir = "temp_downloads"
     os.makedirs(temp_dir, exist_ok=True)
     
-    ydl_opts = {'outtmpl': f'{temp_dir}/{task_id}.%(ext)s', 'quiet': True}
+    ydl_opts = {
+    'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
+    'quiet': True,
+    'no_warnings': True,
+    'cookiefile': 'cookies.txt',  # ← ADD THIS LINE
+}
     file_ext = 'mp4'
 
     if format == 'mp3' or format == 'ig_audio':
