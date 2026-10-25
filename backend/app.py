@@ -21,38 +21,47 @@ app.add_middleware(
 )
 
 def run_ytdlp(url, ydl_opts):
-    """Run yt-dlp with comprehensive error handling"""
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract info first to check availability
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                raise Exception("Could not access video")
-            
-            logger.info(f"Video: {info.get('title', 'Unknown')}")
-            logger.info(f"Available formats: {len(info.get('formats', []))}")
-            
-            # Check if video has downloadable content
-            formats = info.get('formats', [])
-            if not formats:
-                raise Exception("No downloadable formats available - video may be restricted")
-            
-            # Now download
-            ydl.download([url])
-            return True
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"yt-dlp error: {error_msg}")
-        
-        # If format not available, try with most basic options
-        if 'Requested format is not available' in error_msg or 'Signature solving failed' in error_msg:
-            logger.warning("Retrying with basic format...")
-            ydl_opts['format'] = 'best'
-            ydl_opts.pop('postprocessors', None)  # Remove postprocessors
+    """Run yt-dlp with multiple extraction attempts"""
+    attempts = 0
+    max_attempts = 3
+    
+    while attempts < max_attempts:
+        try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Extract info first
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    raise Exception("Could not access video")
+                
+                logger.info(f"Video: {info.get('title', 'Unknown')}")
+                logger.info(f"Duration: {info.get('duration', 'Unknown')}s")
+                logger.info(f"Available formats: {len(info.get('formats', []))}")
+                
+                # Check if video is downloadable
+                if info.get('is_live'):
+                    raise Exception("Live streams cannot be downloaded")
+                
+                # Now download
                 ydl.download([url])
-            return True
-        raise
+                return True
+        except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e)
+            attempts += 1
+            logger.warning(f"Attempt {attempts}/{max_attempts} failed: {error_msg}")
+            
+            if attempts >= max_attempts:
+                raise
+            
+            # Try with different options on retry
+            if 'format' in error_msg.lower():
+                ydl_opts['format'] = 'best'
+                ydl_opts.pop('postprocessors', None)
+            elif 'signature' in error_msg.lower():
+                ydl_opts['extractor_args'] = {'youtube': {'player_client': ['web', 'web_embedded', 'android', 'ios']}}
+            
+            continue
+        except Exception as e:
+            raise
 
 def delete_file(file_path):
     if os.path.exists(file_path):
@@ -69,23 +78,26 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     
     logger.info(f"Starting download: {url} (format: {format})")
     
-    # Base options - MINIMAL and FLEXIBLE
+    # Base options - MAXIMUM COMPATIBILITY
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
         'quiet': False,
         'no_warnings': False,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'retries': 5,
-        'fragment_retries': 5,
+        'retries': 10,
+        'fragment_retries': 10,
         'socket_timeout': 30,
-        'extract_flat': False,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['web', 'web_embedded', 'android', 'ios', 'tv']
+            }
+        },
     }
     
     file_ext = 'mp4'
 
     if format in ['mp3', 'ig_audio']:
-        # For MP3: Get best audio only
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -94,7 +106,6 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For MP4: Use SIMPLE format - let yt-dlp pick best
         ydl_opts['format'] = 'bestvideo+bestaudio/best'
         ydl_opts['merge_output_format'] = 'mp4'
         file_ext = 'mp4'
@@ -107,7 +118,7 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         
         if not files:
             logger.error(f"No files created for task {task_id}")
-            raise Exception("File not created. Video may be blocked or region-restricted.")
+            raise Exception("File not created. Video may be blocked.")
         
         file_path = os.path.join(temp_dir, files[0])
         file_size = os.path.getsize(file_path)
@@ -116,7 +127,6 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         if file_size == 0:
             raise Exception("Downloaded file is empty")
         
-        # Get actual extension
         actual_ext = file_path.split('.')[-1]
         if actual_ext and actual_ext != task_id:
             file_ext = actual_ext
@@ -132,15 +142,14 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         error_msg = str(e)
         logger.error(f"Download failed: {error_msg}")
         
-        # User-friendly messages
         if 'Requested format is not available' in error_msg:
-            error_msg = 'This video format is not available. The video may be age-restricted, private, or region-blocked.'
-        elif 'Signature solving failed' in error_msg:
-            error_msg = 'YouTube signature extraction failed. Please try a different video.'
-        elif 'bot' in error_msg.lower() or 'confirm your age' in error_msg.lower():
-            error_msg = 'YouTube blocked this request. Update cookies.txt or try a different video.'
-        elif 'No downloadable formats' in error_msg:
-            error_msg = 'This video cannot be downloaded. It may be a live stream or have download restrictions.'
+            error_msg = 'YouTube blocked this download. Try a different video or use a VPN.'
+        elif 'Sign in to confirm' in error_msg or 'bot' in error_msg.lower():
+            error_msg = 'YouTube detected automated access. Update cookies.txt or try later.'
+        elif 'Live stream' in error_msg:
+            error_msg = 'Live streams cannot be downloaded.'
+        elif 'age-restricted' in error_msg.lower() or 'private' in error_msg.lower():
+            error_msg = 'This video is restricted and cannot be downloaded.'
         
         raise HTTPException(status_code=500, detail=error_msg)
 
