@@ -8,7 +8,6 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import yt_dlp
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -22,19 +21,8 @@ app.add_middleware(
 )
 
 def run_ytdlp(url, ydl_opts):
-    """Run yt-dlp with better error handling"""
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                raise Exception("Could not extract video info")
-            
-            # Try downloading
-            ydl.download([url])
-            return True
-    except Exception as e:
-        logger.error(f"yt-dlp error: {str(e)}")
-        raise
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
 
 def delete_file(file_path):
     if os.path.exists(file_path):
@@ -50,22 +38,21 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
     
     logger.info(f"Starting download: {url} (format: {format})")
     
-    # Base options
+    # Base options - NO format restrictions
     ydl_opts = {
         'outtmpl': f'{temp_dir}/{task_id}.%(ext)s',
-        'quiet': False,  # Show logs for debugging
+        'quiet': False,
         'no_warnings': False,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'retries': 10,
         'fragment_retries': 10,
-        'socket_timeout': 30,
     }
     
-    file_ext = 'mp4'
+    file_ext = 'mp4'  # Default, will be updated based on actual file
 
     if format in ['mp3', 'ig_audio']:
-        # For MP3: Get best audio, convert to MP3
+        # For audio: get best audio, convert to MP3
         ydl_opts['format'] = 'bestaudio/best'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -74,17 +61,15 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
         }]
         file_ext = 'mp3'
     elif format in ['mp4', 'ig_video']:
-        # For MP4: Try multiple approaches
-        ydl_opts['format'] = 'best'
-        ydl_opts['merge_output_format'] = 'mp4'
-        file_ext = 'mp4'
+        # For video: DON'T force MP4, let yt-dlp pick best available
+        # Remove merge_output_format to avoid conversion errors
+        ydl_opts['format'] = 'bestvideo+bestaudio/best'
+        # Don't set merge_output_format - let it be whatever format is available
 
     try:
-        # Run yt-dlp
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, run_ytdlp, url, ydl_opts)
         
-        # Check if file was created
         files = [f for f in os.listdir(temp_dir) if f.startswith(task_id)]
         
         if not files:
@@ -92,9 +77,14 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
             raise Exception("File not created by yt-dlp. Check Render logs for details.")
         
         file_path = os.path.join(temp_dir, files[0])
-        logger.info(f"File created: {file_path} ({os.path.getsize(file_path)} bytes)")
         
-        # Verify file is not empty
+        # Get actual file extension
+        actual_ext = file_path.split('.')[-1]
+        if actual_ext != task_id:  # Make sure we got a real extension
+            file_ext = actual_ext
+        
+        logger.info(f"File created: {file_path} ({os.path.getsize(file_path)} bytes, ext: {file_ext})")
+        
         if os.path.getsize(file_path) == 0:
             raise Exception("Downloaded file is empty")
         
@@ -113,8 +103,6 @@ async def download_media(url: str, format: str, background_tasks: BackgroundTask
             error_msg = 'This video format is not available. Try a different video.'
         elif 'Sign in to confirm' in error_msg:
             error_msg = 'YouTube bot detection. Please update cookies.txt'
-        elif 'File not created' in error_msg:
-            error_msg = 'Download failed. The video may be blocked or unavailable.'
         
         raise HTTPException(status_code=500, detail=error_msg)
 
